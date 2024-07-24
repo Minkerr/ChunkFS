@@ -11,7 +11,6 @@ pub use system::FileSystem;
 pub mod chunkers;
 #[cfg(feature = "hashers")]
 pub mod hashers;
-pub mod lsmtree;
 
 mod file_layer;
 mod map;
