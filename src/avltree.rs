@@ -3,6 +3,7 @@ use std::cmp::Ordering;
 #[derive(Debug)]
 pub struct AvlTree<K, V> {
     root: Node<K, V>,
+    size: i32
 }
 
 #[derive(Debug)]
@@ -21,11 +22,12 @@ enum Node<K, V> {
 
 impl<K: Ord + Clone, V: Clone> AvlTree<K, V> {
     pub fn new() -> Self {
-        AvlTree { root: Node::Leaf }
+        AvlTree { root: Node::Leaf , size: 0}
     }
 
     pub fn insert(&mut self, key: K, value: V) {
         let mut climb = Box::new(true);
+        self.size += 1;
         self.root = Node::insert(&mut self.root, key, value, &mut climb);
     }
 
@@ -33,7 +35,7 @@ impl<K: Ord + Clone, V: Clone> AvlTree<K, V> {
         Node::get(&self.root, key)
     }
 
-    pub fn traversal(&self, f: &mut dyn FnMut(&K, &V)) {
+    pub fn central_traversal(&self, f: &mut dyn FnMut(&K, &V)) {
         Node::traversal(&self.root, f)
     }
 
@@ -411,12 +413,12 @@ impl<K: Ord + Clone, V: Clone> Node<K, V> {
         }
     }
 
-    pub fn traversal(&self, f: &mut dyn FnMut(&K, &V)) {
+    pub fn central_traversal(&self, f: &mut dyn FnMut(&K, &V)) {
         match self {
             Node::Leaf => {}
             Node::Branch { key, value, left, right, .. } => {
-                f(key, value);
                 left.traversal(f);
+                f(key, value);
                 right.traversal(f);
             }
         }
@@ -436,4 +438,6 @@ impl<K: Ord + Clone, V: Clone> Node<K, V> {
         }
     }
 }
+
+
 

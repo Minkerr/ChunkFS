@@ -1,6 +1,6 @@
 extern crate chunkfs;
 
-use chunkfs::lsmtree::AvlTree;
+use chunkfs::avltree::AvlTree;
 
 #[test]
 fn test_insert() {

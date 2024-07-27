@@ -11,13 +11,14 @@ pub use system::FileSystem;
 pub mod chunkers;
 #[cfg(feature = "hashers")]
 pub mod hashers;
-pub mod lsmtree;
+pub mod avltree;
 
 mod file_layer;
 mod map;
 mod scrub;
 mod storage;
 mod system;
+mod lsmtree;
 
 /// Trait for a CDC hash, combining several other traits: [hash::Hash], [Clone], [Eq], [PartialEq], [Default].
 ///
