@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::fmt::Display;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 
@@ -26,7 +27,7 @@ enum Node<K, V> {
 }
 
 
-impl<K: Ord + Clone + ToString, V: Clone + ToString + PartialEq> LsmTree<K, V> {
+impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Display> LsmTree<K, V> {
     pub fn new(null: V) -> Self {
         LsmTree {
             root: Node::Leaf,
@@ -62,7 +63,7 @@ impl<K: Ord + Clone + ToString, V: Clone + ToString + PartialEq> LsmTree<K, V> {
     }
 
     fn get_from_table(target_key: K, num: u8) -> String { // returns string for tests
-        let file = File::open(String::from("storage/sstable") + &*num.to_string());
+        let file = File::open(format!("storage/sstable{}", num));
         let reader = BufReader::new(file.unwrap());
         for line in reader.lines() {
             let line = line.unwrap();
@@ -75,24 +76,21 @@ impl<K: Ord + Clone + ToString, V: Clone + ToString + PartialEq> LsmTree<K, V> {
         return String::from("");
     }
 
-    pub fn central_traversal(&self, f: &mut dyn FnMut(&K, &V)) {
-        Node::central_traversal(&self.root, f)
-    }
-
-    pub fn print(&self, f: &mut dyn FnMut(&K, &V, &i8)) {
-        Node::print(&self.root, f, 0)
+    pub fn print(&self) {
+        Node::print(&self.root, 0)
     }
 
     pub fn unload(&mut self, null: V) {
         self.number_of_unloads += 1;
-        let file = File::create("storage/sstable".to_owned() + &*self.number_of_unloads.to_string());
-        Node::unload(&mut self.root, file.unwrap(), null, self.number_of_unloads);
+        let mut file = File::create(format!("storage/sstable{}", self.number_of_unloads))
+            .unwrap();
+        Node::unload_to_file(&mut self.root, &mut file, &null, self.number_of_unloads);
     }
 }
 
-impl<K: Ord + Clone + ToString, V: Clone + ToString + PartialEq> Node<K, V> {
-    fn insert(node: &mut Node<K, V>, new_key: K, new_value: V, should_climb: &mut Box<bool>) -> Node<K, V> {
-        match node {
+impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Display> Node<K, V> {
+    fn insert(&mut self, new_key: K, new_value: V, should_climb: &mut bool) -> Node<K, V> {
+        match self {
             Node::Leaf => Node::Branch {
                 key: new_key,
                 value: new_value,
@@ -111,32 +109,32 @@ impl<K: Ord + Clone + ToString, V: Clone + ToString + PartialEq> Node<K, V> {
                 let comparison_result = new_key.cmp(&key);
                 match comparison_result {
                     Ordering::Greater => {
-                        *right = Box::new(Node::insert(right, new_key, new_value, should_climb));
+                        *right = Box::new(right.insert(new_key, new_value, should_climb));
                         *balance_factor = (*balance_factor).clone() + 1;
                     }
                     Ordering::Less => {
-                        *left = Box::new(Node::insert(left, new_key, new_value, should_climb));
+                        *left = Box::new(left.insert(new_key, new_value, should_climb));
                         *balance_factor = (*balance_factor).clone() - 1;
                     }
                     Ordering::Equal => {
-                        **should_climb = false;
-                        return node.clone();
+                        *should_climb = false;
+                        return self.clone();
                     }
                 }
-                if !**should_climb {
+                if !*should_climb {
                     if comparison_result == Ordering::Less {
                         *balance_factor += 1;
                     } else {
                         *balance_factor -= 1;
                     }
-                    return node.clone();
+                    return self.clone();
                 }
                 let bf = (*balance_factor).clone();
                 if bf == -2 || bf == 0 || bf == 2 {
-                    **should_climb = false;
+                    *should_climb = false;
                 }
 
-                Node::balance(node)
+                Node::balance(self)
             }
         }
     }
@@ -467,32 +465,21 @@ impl<K: Ord + Clone + ToString, V: Clone + ToString + PartialEq> Node<K, V> {
         }
     }
 
-    pub fn central_traversal(&self, f: &mut dyn FnMut(&K, &V)) {
-        match self {
-            Node::Leaf => {}
-            Node::Branch { key, value, left, right, .. } => {
-                left.central_traversal(f);
-                f(key, value);
-                right.central_traversal(f);
-            }
-        }
-    }
-
-    pub fn print(&self, f: &mut dyn FnMut(&K, &V, &i8), d: i32) {
+    pub fn print(&self, d: i32) {
         match self {
             Node::Leaf => {}
             Node::Branch { key, value, left, right, balance_factor, .. } => {
-                left.print(f, d.clone() + 1);
+                left.print(d.clone() + 1);
                 for _i in 0..d {
                     print!("    ");
                 }
-                f(key, value, balance_factor);
-                right.print(f, d.clone() + 1);
+                println!("{}:{}({})", key, value, balance_factor);
+                right.print(d.clone() + 1);
             }
         }
     }
 
-    pub fn unload(&mut self, file: File, null: V, number_of_unloads: u8) {
+    pub fn unload_to_file(&mut self, file: &mut File, null: &V, number_of_unloads: u8) {
         match self {
             Node::Leaf => {}
             Node::Branch {
@@ -503,14 +490,14 @@ impl<K: Ord + Clone + ToString, V: Clone + ToString + PartialEq> Node<K, V> {
                 sstable_number,
                 ..
             } => {
-                left.unload(file.try_clone().unwrap(), null.clone(), number_of_unloads);
-                let text = String::from(key.to_string() + ":" + &*value.to_string() + "\n");
-                if *value != null {
-                    let _ = file.try_clone().unwrap().write_all(text.as_bytes());
+                left.unload_to_file(file, null, number_of_unloads);
+                let text = format!("{}:{}\n", key, value);
+                if value != null {
+                    let _ = file.write_all(text.as_bytes());
                     *value = null.clone();
                     *sstable_number = number_of_unloads;
                 }
-                right.unload(file, null, number_of_unloads);
+                right.unload_to_file(file, null, number_of_unloads);
             }
         }
     }

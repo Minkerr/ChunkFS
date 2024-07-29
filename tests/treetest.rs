@@ -16,9 +16,7 @@ fn test_insert() {
     tree.insert(7, "77");
     tree.insert(8, "88");
 
-    tree.print(&mut |key, v, balance_factor| {
-        println!("{}:{}({})", key, v, balance_factor);
-    });
+    tree.print();
 
     assert_eq!(tree.get(1), "11");
     assert_eq!(tree.get(4), "44");
