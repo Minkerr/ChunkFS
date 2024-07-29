@@ -9,7 +9,6 @@ pub struct LsmTree<K, V> {
     size: u32,
     number_of_unloads: u8,
     unload_bias: u32,
-    null_value: V,
 }
 
 #[derive(Debug)]
@@ -18,7 +17,7 @@ enum Node<K, V> {
     Leaf,
     Branch {
         key: K,
-        value: V,
+        value: Option<V>,
         sstable_number: u8,
         left: Box<Node<K, V>>,
         right: Box<Node<K, V>>,
@@ -28,12 +27,11 @@ enum Node<K, V> {
 
 
 impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Display> LsmTree<K, V> {
-    pub fn new(null: V) -> Self {
+    pub fn new() -> Self {
         LsmTree {
             root: Node::Leaf,
             size: 0,
             number_of_unloads: 0,
-            null_value: null, // !!hardcode. In future all V will be wrapped in Option
             unload_bias: 4,
         }
     }
@@ -43,7 +41,7 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
         self.root = Node::insert(&mut self.root, key, value, &mut climb);
         self.size += 1;
         if self.size % self.unload_bias == 0 {
-            self.unload(self.null_value.clone());
+            self.unload();
         }
     }
 
@@ -51,10 +49,9 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
         let (result_value, sstable_number) = Node::get(&self.root, target_key.clone());
         match result_value {
             None => {
-                if sstable_number != 0{
+                if sstable_number != 0 {
                     Self::get_from_table(target_key, sstable_number)
-                }
-                else {
+                } else {
                     String::from("")
                 }
             }
@@ -80,11 +77,11 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
         Node::print(&self.root, 0)
     }
 
-    pub fn unload(&mut self, null: V) {
+    pub fn unload(&mut self) {
         self.number_of_unloads += 1;
         let mut file = File::create(format!("storage/sstable{}", self.number_of_unloads))
             .unwrap();
-        Node::unload_to_file(&mut self.root, &mut file, &null, self.number_of_unloads);
+        Node::unload_to_file(&mut self.root, &mut file, self.number_of_unloads);
     }
 }
 
@@ -93,7 +90,7 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
         match self {
             Node::Leaf => Node::Branch {
                 key: new_key,
-                value: new_value,
+                value: Some(new_value),
                 sstable_number: 0,
                 left: Box::new(Node::Leaf),
                 right: Box::new(Node::Leaf),
@@ -154,7 +151,7 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
                 Ordering::Less => Node::get(left, target_key),
                 Ordering::Equal => {
                     if *sstable_number == 0 {
-                        (Some(value.clone()), 0)
+                        (value.clone(), 0)
                     } else {
                         (None, *sstable_number)
                     }
@@ -164,18 +161,8 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
     }
 
     fn rotate_left(node: &mut Node<K, V>) -> Node<K, V> {
-        let mut right_node = match *node {
-            Node::Branch { ref mut right, .. } => {
-                (*right).clone()
-            }
-            Node::Leaf => unreachable!()
-        };
-        let left_right_node = match *right_node {
-            Node::Branch { ref mut left, .. } => {
-                (*left).clone()
-            }
-            Node::Leaf => { Box::new(Node::Leaf) }
-        };
+        let mut right_node = node.get_right_child();
+        let left_right_node = right_node.get_left_child();
 
         let new_left_right_node = match *right_node {
             Node::Branch { ref mut left, .. } => {
@@ -211,18 +198,8 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
     }
 
     fn rotate_right(node: &mut Node<K, V>) -> Node<K, V> {
-        let mut left_node = match *node {
-            Node::Branch { ref mut left, .. } => {
-                (*left).clone()
-            }
-            Node::Leaf => unreachable!()
-        };
-        let right_left_node = match *left_node {
-            Node::Branch { ref mut right, .. } => {
-                (*right).clone()
-            }
-            Node::Leaf => { Box::new(Node::Leaf) }
-        };
+        let mut left_node = node.get_left_child();
+        let right_left_node = left_node.get_right_child();
 
         let new_right_left_node = match *left_node {
             Node::Branch { ref mut right, .. } => {
@@ -258,30 +235,10 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
     }
 
     fn big_rotate_left(node: &mut Node<K, V>) -> Node<K, V> {
-        let mut right_node = match *node {
-            Node::Branch { ref mut right, .. } => {
-                (*right).clone()
-            }
-            Node::Leaf => unreachable!()
-        };
-        let mut left_right_node = match *right_node {
-            Node::Branch { ref mut left, .. } => {
-                (*left).clone()
-            }
-            Node::Leaf => unreachable!()
-        };
-        let left_left_right_node = match *left_right_node {
-            Node::Branch { ref mut left, .. } => {
-                (*left).clone()
-            }
-            Node::Leaf => { Box::new(Node::Leaf) }
-        };
-        let right_left_right_node = match *left_right_node {
-            Node::Branch { ref mut right, .. } => {
-                (*right).clone()
-            }
-            Node::Leaf => { Box::new(Node::Leaf) }
-        };
+        let mut right_node = node.get_right_child();
+        let mut left_right_node = right_node.get_left_child();
+        let left_left_right_node = left_right_node.get_left_child();
+        let right_left_right_node = left_right_node.get_right_child();
 
         let (new_left_left_right_node, new_right_left_right_node)
             = match *left_right_node {
@@ -344,30 +301,10 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
     }
 
     fn big_rotate_right(node: &mut Node<K, V>) -> Node<K, V> {
-        let mut left_node = match *node {
-            Node::Branch { ref mut left, .. } => {
-                (*left).clone()
-            }
-            Node::Leaf => unreachable!()
-        };
-        let mut right_left_node = match *left_node {
-            Node::Branch { ref mut right, .. } => {
-                (*right).clone()
-            }
-            Node::Leaf => unreachable!()
-        };
-        let left_right_left_node = match *right_left_node {
-            Node::Branch { ref mut left, .. } => {
-                (*left).clone()
-            }
-            Node::Leaf => { Box::new(Node::Leaf) }
-        };
-        let right_right_left_node = match *right_left_node {
-            Node::Branch { ref mut right, .. } => {
-                (*right).clone()
-            }
-            Node::Leaf => { Box::new(Node::Leaf) }
-        };
+        let mut left_node = node.get_left_child();
+        let mut right_left_node = left_node.get_right_child();
+        let left_right_left_node = right_left_node.get_left_child();
+        let right_right_left_node = right_left_node.get_right_child();
 
         let (new_left_right_left_node, new_right_right_left_node)
             = match *right_left_node {
@@ -429,6 +366,24 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
         *right_left_node
     }
 
+    fn get_right_child(&mut self) -> Box<Node<K, V>> {
+        match *self {
+            Node::Branch { ref mut right, .. } => {
+                (*right).clone()
+            }
+            Node::Leaf => { Box::new(Node::Leaf) }
+        }
+    }
+
+    fn get_left_child(&mut self) -> Box<Node<K, V>> {
+        match *self {
+            Node::Branch { ref mut left, .. } => {
+                (*left).clone()
+            }
+            Node::Leaf => { Box::new(Node::Leaf) }
+        }
+    }
+
     fn balance(node: &mut Node<K, V>) -> Node<K, V> {
         match *node {
             Node::Leaf => { node.clone() }
@@ -443,21 +398,23 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
                         match **right {
                             Node::Branch { ref balance_factor, .. }
                             => if *balance_factor >= 0 {
-                                return Node::rotate_left(node);
+                                Node::rotate_left(node)
+                            } else {
+                                Node::big_rotate_left(node)
                             },
                             _ => unreachable!()
                         }
-                        return Node::big_rotate_left(node);
                     }
                     -2 => {
                         match **left {
                             Node::Branch { ref balance_factor, .. }
                             => if *balance_factor <= 0 {
-                                return Node::rotate_right(node);
+                                Node::rotate_right(node)
+                            } else {
+                                Node::big_rotate_right(node)
                             },
-                            _ => {}
+                            _ => unreachable!()
                         }
-                        return Node::big_rotate_right(node);
                     }
                     _ => { node.clone() }
                 }
@@ -473,13 +430,16 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
                 for _i in 0..d {
                     print!("    ");
                 }
-                println!("{}:{}({})", key, value, balance_factor);
+                match value {
+                    None => { println!("{}:({})", key, balance_factor) }
+                    Some(v) => { println!("{}:{}({})", key, v, balance_factor) }
+                }
                 right.print(d.clone() + 1);
             }
         }
     }
 
-    pub fn unload_to_file(&mut self, file: &mut File, null: &V, number_of_unloads: u8) {
+    pub fn unload_to_file(&mut self, file: &mut File, number_of_unloads: u8) {
         match self {
             Node::Leaf => {}
             Node::Branch {
@@ -490,14 +450,17 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
                 sstable_number,
                 ..
             } => {
-                left.unload_to_file(file, null, number_of_unloads);
-                let text = format!("{}:{}\n", key, value);
-                if value != null {
+                left.unload_to_file(file, number_of_unloads);
+                let text = match value {
+                    Some(v) => { format!("{}:{}\n", key, v) }
+                    None => format!("{}:\n", key)
+                };
+                if *value != None {
                     let _ = file.write_all(text.as_bytes());
-                    *value = null.clone();
+                    *value = None;
                     *sstable_number = number_of_unloads;
                 }
-                right.unload_to_file(file, null, number_of_unloads);
+                right.unload_to_file(file, number_of_unloads);
             }
         }
     }
