@@ -172,10 +172,7 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
             Node::Leaf => unreachable!()
         };
 
-        match **new_left_right_node {
-            Node::Branch { ref mut right, .. } => { *right = Box::new(*left_right_node) }
-            Node::Leaf => unreachable!()
-        }
+        new_left_right_node.set_right_child(left_right_node);
 
         match *right_node {
             Node::Branch { ref mut left, ref mut balance_factor, .. } => {
@@ -209,10 +206,7 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
             Node::Leaf => { unreachable!() }
         };
 
-        match **new_right_left_node {
-            Node::Branch { ref mut left, .. } => { *left = Box::new(*right_left_node) }
-            Node::Leaf => {}
-        }
+        new_right_left_node.set_left_child(right_left_node);
 
         match *left_node {
             Node::Branch { ref mut right, ref mut balance_factor, .. } => {
@@ -250,17 +244,8 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
             Node::Leaf => { unreachable!() }
         };
 
-        match **new_left_left_right_node {
-            Node::Branch { ref mut right, .. }
-            => { *right = Box::new(*left_left_right_node) }
-            Node::Leaf => unreachable!()
-        }
-
-        match **new_right_left_right_node {
-            Node::Branch { ref mut left, .. }
-            => { *left = Box::new(*right_left_right_node) }
-            Node::Leaf => unreachable!()
-        }
+        new_left_left_right_node.set_right_child(left_left_right_node);
+        new_right_left_right_node.set_left_child(right_left_right_node);
 
         match *left_right_node {
             Node::Branch {
@@ -316,17 +301,8 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
             Node::Leaf => { unreachable!() }
         };
 
-        match **new_left_right_left_node {
-            Node::Branch { ref mut right, .. }
-            => { *right = Box::new(*left_right_left_node) }
-            Node::Leaf => unreachable!()
-        }
-
-        match **new_right_right_left_node {
-            Node::Branch { ref mut left, .. }
-            => { *left = Box::new(*right_right_left_node) }
-            Node::Leaf => unreachable!()
-        }
+        new_left_right_left_node.set_right_child(left_right_left_node);
+        new_right_right_left_node.set_left_child(right_right_left_node);
 
         match *right_left_node {
             Node::Branch {
@@ -364,6 +340,22 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
         }
 
         *right_left_node
+    }
+
+    fn set_right_child(&mut self, node: Box<Node<K, V>>) {
+        match self {
+            Node::Branch { ref mut right, .. }
+            => { *right = Box::new(*node) }
+            Node::Leaf => unreachable!()
+        }
+    }
+
+    fn set_left_child(&mut self, node: Box<Node<K, V>>) {
+        match self {
+            Node::Branch { ref mut left, .. }
+            => { *left = Box::new(*node) }
+            Node::Leaf => unreachable!()
+        }
     }
 
     fn get_right_child(&mut self) -> Box<Node<K, V>> {
