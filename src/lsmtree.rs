@@ -59,6 +59,10 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
         }
     }
 
+    pub fn get_balance_factor(&self, target_key: K) -> Option<i8> {
+        self.root.get_balance_factor(target_key.clone())
+    }
+
     pub fn get(&self, target_key: K) -> String {
         let (result_value, sstable_number) = Node::get(&self.root, target_key.clone());
         match result_value {
@@ -157,6 +161,25 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
         }
     }
 
+    fn get_balance_factor(&self, target_key: K) -> Option<i8> {
+        match self {
+            Node::Leaf => None,
+            Node::Branch {
+                ref key,
+                ref left,
+                ref right,
+                balance_factor,
+                ..
+            } => match target_key.cmp(&key) {
+                Ordering::Greater => right.get_balance_factor(target_key),
+                Ordering::Less => left.get_balance_factor(target_key),
+                Ordering::Equal => {
+                    Some(*balance_factor)
+                }
+            },
+        }
+    }
+
     fn get(&self, target_key: K) -> (Option<V>, u8) {
         match self {
             Node::Leaf => (None, 0),
@@ -168,8 +191,8 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
                 ref right,
                 ..
             } => match target_key.cmp(&key) {
-                Ordering::Greater => Node::get(right, target_key),
-                Ordering::Less => Node::get(left, target_key),
+                Ordering::Greater => right.get(target_key),
+                Ordering::Less => left.get(target_key),
                 Ordering::Equal => {
                     if *sstable_number == 0 {
                         (value.clone(), 0)
