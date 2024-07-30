@@ -19,10 +19,10 @@ fn test_insert() {
     tree.print();
     println!("==============================");
 
-    // assert_eq!(tree.get(1), "11");
-    // assert_eq!(tree.get(4), "44");
-    // assert_eq!(tree.get(7), "77");
-    // assert_eq!(tree.get(10), "");
+    assert_eq!(tree.get(1), "11");
+    assert_eq!(tree.get(4), "44");
+    assert_eq!(tree.get(7), "77");
+    assert_eq!(tree.get(10), "");
 }
 
 #[test]
@@ -42,10 +42,10 @@ fn test_big_right_rotate() {
     tree.print();
     println!("==============================");
 
-    // assert_eq!(tree.get(1), "11");
-    // assert_eq!(tree.get(4), "44");
-    // assert_eq!(tree.get(7), "77");
-    // assert_eq!(tree.get(10), "");
+    assert_eq!(tree.get(1), "11");
+    assert_eq!(tree.get(4), "44");
+    assert_eq!(tree.get(7), "77");
+    assert_eq!(tree.get(10), "");
 }
 
 #[test]
@@ -65,8 +65,8 @@ fn test_big_left_rotate() {
     tree.print();
     println!("==============================");
 
-    // assert_eq!(tree.get(1), "11");
-    // assert_eq!(tree.get(4), "44");
-    // assert_eq!(tree.get(7), "77");
-    // assert_eq!(tree.get(10), "");
+    assert_eq!(tree.get(1), "11");
+    assert_eq!(tree.get(4), "44");
+    assert_eq!(tree.get(7), "77");
+    assert_eq!(tree.get(10), "");
 }

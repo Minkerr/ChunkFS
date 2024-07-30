@@ -2,6 +2,9 @@ use std::cmp::Ordering;
 use std::fmt::Display;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
+use std::path::Path;
+use rand::distributions::Alphanumeric;
+use rand::{thread_rng, Rng};
 
 #[derive(Debug)]
 pub struct LsmTree<K, V> {
@@ -9,6 +12,7 @@ pub struct LsmTree<K, V> {
     size: u32,
     number_of_unloads: u8,
     unload_bias: u32,
+    identifier: String,
 }
 
 #[derive(Debug)]
@@ -33,7 +37,17 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
             size: 0,
             number_of_unloads: 0,
             unload_bias: 4,
+            identifier: Self::generate_random_string(16),
         }
+    }
+
+    fn generate_random_string(length: usize) -> String {
+        let rng = thread_rng();
+        let random_string: String = rng.sample_iter(&Alphanumeric)
+            .take(length)
+            .map(char::from)
+            .collect();
+        random_string
     }
 
     pub fn insert(&mut self, key: K, value: V) {
@@ -50,7 +64,7 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
         match result_value {
             None => {
                 if sstable_number != 0 {
-                    Self::get_from_table(target_key, sstable_number)
+                    Self::get_from_table(target_key, sstable_number, self.identifier.clone())
                 } else {
                     String::from("")
                 }
@@ -59,8 +73,8 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
         }
     }
 
-    fn get_from_table(target_key: K, num: u8) -> String { // returns string for tests
-        let file = File::open(format!("storage/sstable{}", num));
+    fn get_from_table(target_key: K, num: u8, id: String) -> String { // returns string for tests
+        let file = File::open(format!("storage/tree{}/sstable{}", id, num));
         let reader = BufReader::new(file.unwrap());
         for line in reader.lines() {
             let line = line.unwrap();
@@ -79,7 +93,14 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
 
     pub fn unload(&mut self) {
         self.number_of_unloads += 1;
-        let mut file = File::create(format!("storage/sstable{}", self.number_of_unloads))
+        if !Path::new("storage").exists() {
+            std::fs::create_dir("storage");
+        }
+        let tree_folder = format!("storage/tree{}", self.identifier);
+        if !Path::new(&tree_folder).exists() {
+            std::fs::create_dir(tree_folder);
+        }
+        let mut file = File::create(format!("storage/tree{}/sstable{}", self.identifier, self.number_of_unloads))
             .unwrap();
         Node::unload_to_file(&mut self.root, &mut file, self.number_of_unloads);
     }
@@ -131,13 +152,13 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
                     *should_climb = false;
                 }
 
-                Node::balance(self)
+                self.balance()
             }
         }
     }
 
-    fn get(node: &Node<K, V>, target_key: K) -> (Option<V>, u8) {
-        match node {
+    fn get(&self, target_key: K) -> (Option<V>, u8) {
+        match self {
             Node::Leaf => (None, 0),
             Node::Branch {
                 ref key,
@@ -160,13 +181,13 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
         }
     }
 
-    fn rotate_left(node: &mut Node<K, V>) -> Node<K, V> {
-        let mut right_node = node.get_right_child();
+    fn rotate_left(&mut self) -> Node<K, V> {
+        let mut right_node = self.get_right_child();
         let left_right_node = right_node.get_left_child();
 
         let new_left_right_node = match *right_node {
             Node::Branch { ref mut left, .. } => {
-                *left = Box::new(node.clone());
+                *left = Box::new(self.clone());
                 left
             }
             Node::Leaf => unreachable!()
@@ -194,13 +215,13 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
         *right_node
     }
 
-    fn rotate_right(node: &mut Node<K, V>) -> Node<K, V> {
-        let mut left_node = node.get_left_child();
+    fn rotate_right(&mut self) -> Node<K, V> {
+        let mut left_node = self.get_left_child();
         let right_left_node = left_node.get_right_child();
 
         let new_right_left_node = match *left_node {
             Node::Branch { ref mut right, .. } => {
-                *right = Box::new(node.clone());
+                *right = Box::new(self.clone());
                 right
             }
             Node::Leaf => { unreachable!() }
@@ -228,8 +249,8 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
         *left_node
     }
 
-    fn big_rotate_left(node: &mut Node<K, V>) -> Node<K, V> {
-        let mut right_node = node.get_right_child();
+    fn big_rotate_left(&mut self) -> Node<K, V> {
+        let mut right_node = self.get_right_child();
         let mut left_right_node = right_node.get_left_child();
         let left_left_right_node = left_right_node.get_left_child();
         let right_left_right_node = left_right_node.get_right_child();
@@ -237,7 +258,7 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
         let (new_left_left_right_node, new_right_left_right_node)
             = match *left_right_node {
             Node::Branch { ref mut left, ref mut right, .. } => {
-                *left = Box::new(node.clone());
+                *left = Box::new(self.clone());
                 *right = Box::new((*right_node).clone());
                 (left, right)
             }
@@ -285,8 +306,8 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
         *left_right_node
     }
 
-    fn big_rotate_right(node: &mut Node<K, V>) -> Node<K, V> {
-        let mut left_node = node.get_left_child();
+    fn big_rotate_right(&mut self) -> Node<K, V> {
+        let mut left_node = self.get_left_child();
         let mut right_left_node = left_node.get_right_child();
         let left_right_left_node = right_left_node.get_left_child();
         let right_right_left_node = right_left_node.get_right_child();
@@ -295,7 +316,7 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
             = match *right_left_node {
             Node::Branch { ref mut left, ref mut right, .. } => {
                 *left = Box::new((*left_node).clone());
-                *right = Box::new(node.clone());
+                *right = Box::new(self.clone());
                 (left, right)
             }
             Node::Leaf => { unreachable!() }
@@ -376,9 +397,9 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
         }
     }
 
-    fn balance(node: &mut Node<K, V>) -> Node<K, V> {
-        match *node {
-            Node::Leaf => { node.clone() }
+    fn balance(&mut self) -> Node<K, V> {
+        match *self {
+            Node::Leaf => { self.clone() }
             Node::Branch {
                 ref left,
                 ref right,
@@ -390,9 +411,9 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
                         match **right {
                             Node::Branch { ref balance_factor, .. }
                             => if *balance_factor >= 0 {
-                                Node::rotate_left(node)
+                                self.rotate_left()
                             } else {
-                                Node::big_rotate_left(node)
+                                self.big_rotate_left()
                             },
                             _ => unreachable!()
                         }
@@ -401,14 +422,14 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
                         match **left {
                             Node::Branch { ref balance_factor, .. }
                             => if *balance_factor <= 0 {
-                                Node::rotate_right(node)
+                                self.rotate_right()
                             } else {
-                                Node::big_rotate_right(node)
+                                self.big_rotate_right()
                             },
                             _ => unreachable!()
                         }
                     }
-                    _ => { node.clone() }
+                    _ => { self.clone() }
                 }
             }
         }
