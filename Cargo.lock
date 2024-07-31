@@ -29,6 +29,7 @@ version = "0.1.0"
 dependencies = [
  "chunkfs",
  "chunking",
+ "rand",
  "sha2",
 ]
 
