@@ -7,12 +7,14 @@ use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 
 #[derive(Debug)]
-pub struct LsmTree<K, V> {
+pub struct LsmTree<K, V, F, G> {
     root: Node<K, V>,
     size: u32,
     number_of_unloads: u8,
     unload_bias: u32,
     identifier: String,
+    boxer: F,
+    unboxer: G,
 }
 
 #[derive(Debug)]
@@ -30,14 +32,20 @@ enum Node<K, V> {
 }
 
 
-impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Display> LsmTree<K, V> {
-    pub fn new() -> Self {
+impl<K: Ord + Clone + ToString + Display, V: Clone + PartialEq, F, G> LsmTree<K, V, F, G>
+    where
+        F: Fn(V) -> String,
+        G: Fn(String) -> V,
+{
+    pub fn new(bias: u32, f: F, g: G) -> Self {
         LsmTree {
             root: Node::Leaf,
             size: 0,
             number_of_unloads: 0,
-            unload_bias: 4,
+            unload_bias: bias,
             identifier: Self::generate_random_string(16),
+            boxer: f,
+            unboxer: g,
         }
     }
 
@@ -63,21 +71,21 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
         self.root.get_balance_factor(target_key.clone())
     }
 
-    pub fn get(&self, target_key: K) -> String {
+    pub fn get(&self, target_key: K) -> Option<V> {
         let (result_value, sstable_number) = Node::get(&self.root, target_key.clone());
         match result_value {
             None => {
                 if sstable_number != 0 {
-                    Self::get_from_table(target_key, sstable_number, self.identifier.clone())
+                    Self::get_from_table(target_key, sstable_number, self.identifier.clone(), &self.unboxer)
                 } else {
-                    String::from("")
+                    None
                 }
             }
-            Some(value) => { value.to_string() }
+            Some(value) => { Some(value) }
         }
     }
 
-    fn get_from_table(target_key: K, num: u8, id: String) -> String { // returns string for tests
+    fn get_from_table(target_key: K, num: u8, id: String, unboxer: &G) -> Option<V> {
         let file = File::open(format!("storage/tree{}/sstable{}", id, num));
         let reader = BufReader::new(file.unwrap());
         for line in reader.lines() {
@@ -85,32 +93,33 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
             let (key, value) = line.split_once(':')
                 .map(|(a, b)| (a.to_string(), b.to_string())).unwrap();
             if key == target_key.to_string() {
-                return value;
+                return Some((*unboxer)(value));
             }
         }
-        return String::from("");
+        return None;
     }
 
     pub fn print(&self) {
-        Node::print(&self.root, 0)
+        Node::print(&self.root, 0, &self.boxer)
     }
 
-    pub fn unload(&mut self) {
+    fn unload(&mut self) {
         self.number_of_unloads += 1;
         if !Path::new("storage").exists() {
-            std::fs::create_dir("storage");
+            let _ = std::fs::create_dir("storage");
         }
         let tree_folder = format!("storage/tree{}", self.identifier);
         if !Path::new(&tree_folder).exists() {
-            std::fs::create_dir(tree_folder);
+            let _ = std::fs::create_dir(tree_folder);
         }
+
         let mut file = File::create(format!("storage/tree{}/sstable{}", self.identifier, self.number_of_unloads))
             .unwrap();
-        Node::unload_to_file(&mut self.root, &mut file, self.number_of_unloads);
+        Node::unload_to_file(&mut self.root, &mut file, self.number_of_unloads, &self.boxer);
     }
 }
 
-impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Display> Node<K, V> {
+impl<K: Ord + Clone + ToString + Display, V: Clone + PartialEq> Node<K, V> {
     fn insert(&mut self, new_key: K, new_value: V, should_climb: &mut bool) -> Node<K, V> {
         match self {
             Node::Leaf => Node::Branch {
@@ -458,24 +467,24 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
         }
     }
 
-    pub fn print(&self, d: i32) {
+    pub fn print(&self, d: i32, boxer: &dyn Fn(V) -> String) {
         match self {
             Node::Leaf => {}
             Node::Branch { key, value, left, right, balance_factor, .. } => {
-                left.print(d.clone() + 1);
+                left.print(d.clone() + 1, boxer);
                 for _i in 0..d {
                     print!("    ");
                 }
                 match value {
                     None => { println!("{}:({})", key, balance_factor) }
-                    Some(v) => { println!("{}:{}({})", key, v, balance_factor) }
+                    Some(v) => { println!("{}:{}({})", key, boxer((*v).clone()), balance_factor) }
                 }
-                right.print(d.clone() + 1);
+                right.print(d.clone() + 1, boxer);
             }
         }
     }
 
-    pub fn unload_to_file(&mut self, file: &mut File, number_of_unloads: u8) {
+    pub fn unload_to_file(&mut self, file: &mut File, number_of_unloads: u8, boxer: &dyn Fn(V) -> String) {
         match self {
             Node::Leaf => {}
             Node::Branch {
@@ -486,9 +495,9 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
                 sstable_number,
                 ..
             } => {
-                left.unload_to_file(file, number_of_unloads);
+                left.unload_to_file(file, number_of_unloads, boxer);
                 let text = match value {
-                    Some(v) => { format!("{}:{}\n", key, v) }
+                    Some(v) => { format!("{}:{}\n", key, (*boxer)((*v).clone())) }
                     None => format!("{}:\n", key)
                 };
                 if *value != None {
@@ -496,11 +505,8 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + ToString + PartialEq + Disp
                     *value = None;
                     *sstable_number = number_of_unloads;
                 }
-                right.unload_to_file(file, number_of_unloads);
+                right.unload_to_file(file, number_of_unloads, boxer);
             }
         }
     }
 }
-
-
-
