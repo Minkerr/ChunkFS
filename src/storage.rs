@@ -1,18 +1,18 @@
 use std::fmt::Formatter;
 use std::io;
 use std::time::{Duration, Instant};
-
+use serde::{Deserialize, Serialize};
 use crate::map::Database;
 use crate::scrub::{Scrub, ScrubMeasurements};
 use crate::WriteMeasurements;
 use crate::{ChunkHash, Chunker, Hasher};
 
 /// Container for storage data.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct DataContainer<K>(Data<K>);
 
 /// Contains either a chunk produced by [Chunker], or a vector of target keys, using which the initial chunk can be restored.
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum Data<K> {
     Chunk(Vec<u8>),
     TargetChunk(Vec<K>),

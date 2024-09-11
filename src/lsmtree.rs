@@ -1,25 +1,26 @@
 use std::cmp::Ordering;
-use std::fmt::Display;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
+use serde::{Serialize, Deserialize};
+use serde_json;
 
 #[derive(Debug)]
-pub struct LsmTree<K, V, F, G> {
+#[derive(Clone)]
+pub struct LsmTree<K: Clone, V: Clone> {
     root: Node<K, V>,
+    stack: Vec<Node<K, V>>,
     size: u32,
     number_of_unloads: u8,
     unload_bias: u32,
     identifier: String,
-    boxer: F,
-    unboxer: G,
 }
 
 #[derive(Debug)]
 #[derive(Clone)]
-enum Node<K, V> {
+enum Node<K, V> where K: Clone, V: Clone {
     Leaf,
     Branch {
         key: K,
@@ -32,20 +33,16 @@ enum Node<K, V> {
 }
 
 
-impl<K: Ord + Clone + ToString + Display, V: Clone + PartialEq, F, G> LsmTree<K, V, F, G>
-    where
-        F: Fn(V) -> String,
-        G: Fn(String) -> V,
+impl<'b, K: Ord + Clone + Serialize + for<'a> Deserialize<'a>, V: Clone + Serialize + for<'a> Deserialize<'a>> LsmTree<K, V>
 {
-    pub fn new(bias: u32, f: F, g: G) -> Self {
+    pub fn new(bias: u32) -> Self {
         LsmTree {
             root: Node::Leaf,
+            stack: Vec::new(),
             size: 0,
             number_of_unloads: 0,
             unload_bias: bias,
             identifier: Self::generate_random_string(16),
-            boxer: f,
-            unboxer: g,
         }
     }
 
@@ -76,7 +73,7 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + PartialEq, F, G> LsmTree<K,
         match result_value {
             None => {
                 if sstable_number != 0 {
-                    Self::get_from_table(target_key, sstable_number, self.identifier.clone(), &self.unboxer)
+                    Self::get_from_table(target_key, sstable_number, self.identifier.clone())
                 } else {
                     None
                 }
@@ -85,22 +82,22 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + PartialEq, F, G> LsmTree<K,
         }
     }
 
-    fn get_from_table(target_key: K, num: u8, id: String, unboxer: &G) -> Option<V> {
+    fn get_from_table(target_key: K, num: u8, id: String) -> Option<V> {
         let file = File::open(format!("storage/tree{}/sstable{}", id, num));
         let reader = BufReader::new(file.unwrap());
         for line in reader.lines() {
             let line = line.unwrap();
             let (key, value) = line.split_once(':')
                 .map(|(a, b)| (a.to_string(), b.to_string())).unwrap();
-            if key == target_key.to_string() {
-                return Some((*unboxer)(value));
+            if key == serde_json::to_string(&target_key).unwrap() {
+                return Some(serde_json::from_str(&value).unwrap());
             }
         }
         return None;
     }
 
     pub fn print(&self) {
-        Node::print(&self.root, 0, &self.boxer)
+        Node::print(&self.root, 0)
     }
 
     fn unload(&mut self) {
@@ -115,11 +112,15 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + PartialEq, F, G> LsmTree<K,
 
         let mut file = File::create(format!("storage/tree{}/sstable{}", self.identifier, self.number_of_unloads))
             .unwrap();
-        Node::unload_to_file(&mut self.root, &mut file, self.number_of_unloads, &self.boxer);
+        Node::unload_to_file(&mut self.root, &mut file, self.number_of_unloads);
+    }
+
+    pub fn iter(&self) -> LsmTreeIterator<K, V> {
+        LsmTreeIterator::new(self.root.clone(), self.identifier.clone())
     }
 }
 
-impl<K: Ord + Clone + ToString + Display, V: Clone + PartialEq> Node<K, V> {
+impl<K: Ord + Clone + Serialize + for<'a> Deserialize<'a>, V: Clone + Serialize + for<'a> Deserialize<'a>> Node<K, V> {
     fn insert(&mut self, new_key: K, new_value: V, should_climb: &mut bool) -> Node<K, V> {
         match self {
             Node::Leaf => Node::Branch {
@@ -467,24 +468,27 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + PartialEq> Node<K, V> {
         }
     }
 
-    pub fn print(&self, d: i32, boxer: &dyn Fn(V) -> String) {
+    pub fn print(&self, d: i32) {
         match self {
             Node::Leaf => {}
             Node::Branch { key, value, left, right, balance_factor, .. } => {
-                left.print(d.clone() + 1, boxer);
+                left.print(d.clone() + 1);
                 for _i in 0..d {
                     print!("    ");
                 }
                 match value {
-                    None => { println!("{}:({})", key, balance_factor) }
-                    Some(v) => { println!("{}:{}({})", key, boxer((*v).clone()), balance_factor) }
+                    None => { println!("{}:({})", serde_json::to_string(&key).unwrap(), balance_factor) }
+                    Some(v) => {
+                        println!("{}:{}({})",
+                                 serde_json::to_string(&key).unwrap(), serde_json::to_string(v).unwrap(), balance_factor)
+                    }
                 }
-                right.print(d.clone() + 1, boxer);
+                right.print(d.clone() + 1);
             }
         }
     }
 
-    pub fn unload_to_file(&mut self, file: &mut File, number_of_unloads: u8, boxer: &dyn Fn(V) -> String) {
+    pub fn unload_to_file(&mut self, file: &mut File, number_of_unloads: u8) {
         match self {
             Node::Leaf => {}
             Node::Branch {
@@ -495,18 +499,80 @@ impl<K: Ord + Clone + ToString + Display, V: Clone + PartialEq> Node<K, V> {
                 sstable_number,
                 ..
             } => {
-                left.unload_to_file(file, number_of_unloads, boxer);
+                left.unload_to_file(file, number_of_unloads);
                 let text = match value {
-                    Some(v) => { format!("{}:{}\n", key, (*boxer)((*v).clone())) }
-                    None => format!("{}:\n", key)
+                    Some(v) => { format!("{}:{}\n", serde_json::to_string(&key).unwrap(), serde_json::to_string(&v).unwrap()) }
+                    None => format!("{}:\n", serde_json::to_string(&key).unwrap())
                 };
-                if *value != None {
+                if (*value).is_some() {
                     let _ = file.write_all(text.as_bytes());
                     *value = None;
                     *sstable_number = number_of_unloads;
                 }
-                right.unload_to_file(file, number_of_unloads, boxer);
+                right.unload_to_file(file, number_of_unloads);
             }
         }
     }
 }
+
+pub struct LsmTreeIterator<K: Clone, V: Clone> {
+    stack: Vec<Node<K, V>>,
+    id: String,
+}
+
+impl<K: Clone, V: Clone> LsmTreeIterator<K, V> {
+    fn new(root: Node<K, V>, id: String) -> Self {
+        let mut stack = Vec::new();
+        Self::push_left(&mut stack, root);
+        LsmTreeIterator { stack, id }
+    }
+
+    fn push_left(stack: &mut Vec<Node<K, V>>, node: Node<K, V>) {
+        let mut current = &node;
+        while let Node::Branch { left, .. } = current {
+            stack.push((*current).clone());
+            current = left;
+        }
+    }
+}
+
+impl<'a, K: Ord + Clone + Serialize + for<'b> Deserialize<'b>, V: Clone + Serialize + for<'b> Deserialize<'b>> Iterator
+for LsmTreeIterator<K, V> {
+    type Item = (K, V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(node) = &self.stack.pop() {
+            if let Node::Branch { key, value, right, sstable_number, .. } = node {
+                let new_value = match value.clone() {
+                    None => {
+                        if *sstable_number != 0 {
+                            LsmTree::get_from_table(key.clone(), *sstable_number, self.id.clone()).unwrap()
+                        } else {
+                            unreachable!()
+                        }
+                    }
+                    Some(value) => { value }
+                };
+                let result = Some(((*key).clone(), new_value));
+                Self::push_left(&mut self.stack, (**right).clone());
+                result
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+}
+
+
+impl<K: Ord + Clone + Serialize + for<'b> Deserialize<'b>, V: Clone + Serialize + for<'b> Deserialize<'b>>
+IntoIterator for LsmTree<K, V> {
+    type Item = (K, V);
+    type IntoIter = LsmTreeIterator<K, V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        LsmTreeIterator::new(self.root.clone(), self.identifier.clone())
+    }
+}
+

@@ -12,6 +12,7 @@ pub mod chunkers;
 #[cfg(feature = "hashers")]
 pub mod hashers;
 pub mod lsmtree;
+pub mod chunklsmtree;
 
 mod file_layer;
 mod map;

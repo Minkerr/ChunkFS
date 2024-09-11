@@ -5,12 +5,14 @@ use std::collections::HashMap;
 use chunkfs::chunkers::{FSChunker, LeapChunker};
 use chunkfs::hashers::SimpleHasher;
 use chunkfs::FileSystem;
+use chunkfs::lsmtree::LsmTree;
 
 const MB: usize = 1024 * 1024;
 
 #[test]
 fn write_read_complete_test() {
     let mut fs = FileSystem::new_cdc_only(HashMap::default(), SimpleHasher);
+    //let mut fs = FileSystem::new_cdc_only(LsmTree::new(1024), SimpleHasher);
 
     let mut handle = fs
         .create_file("file".to_string(), LeapChunker::default(), true)
