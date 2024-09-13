@@ -1,8 +1,8 @@
-use std::io;
-use crate::{ChunkHash, Database};
 use crate::lsmtree::LsmTree;
+use crate::{ChunkHash, Database};
+use std::io;
 
-impl<Hash: ChunkHash + Ord + , V: Clone> Database<Hash, V> for LsmTree<Hash, V> {
+impl<Hash: ChunkHash + Ord, V: Clone> Database<Hash, V> for LsmTree<Hash, V> {
     fn insert(&mut self, key: Hash, value: V) -> io::Result<()> {
         let _ = self.insert(key, value);
         Ok(())

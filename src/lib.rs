@@ -9,10 +9,10 @@ pub use system::FileSystem;
 
 #[cfg(feature = "chunkers")]
 pub mod chunkers;
+pub mod chunklsmtree;
 #[cfg(feature = "hashers")]
 pub mod hashers;
 pub mod lsmtree;
-pub mod chunklsmtree;
 
 mod file_layer;
 mod map;

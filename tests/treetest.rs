@@ -1,7 +1,7 @@
 extern crate chunkfs;
 
-use serde::{Deserialize, Serialize};
 use chunkfs::lsmtree::LsmTree;
+use serde::{Deserialize, Serialize};
 
 #[test]
 fn test_insert() {
@@ -116,12 +116,48 @@ fn test_tree_with_struct() {
 
     let mut tree = LsmTree::new(2);
 
-    tree.insert(1, People { name: "John".to_string(), age: 56});
-    tree.insert(2, People { name: "Mike".to_string(), age: 57});
-    tree.insert(3, People { name: "Tommy".to_string(), age: 48});
-    assert_eq!(tree.get(1), Some(People { name: "John".to_string(), age: 56}));
-    assert_eq!(tree.get(2), Some(People { name: "Mike".to_string(), age: 57}));
-    assert_eq!(tree.get(3), Some(People { name: "Tommy".to_string(), age: 48}));
+    tree.insert(
+        1,
+        People {
+            name: "John".to_string(),
+            age: 56,
+        },
+    );
+    tree.insert(
+        2,
+        People {
+            name: "Mike".to_string(),
+            age: 57,
+        },
+    );
+    tree.insert(
+        3,
+        People {
+            name: "Tommy".to_string(),
+            age: 48,
+        },
+    );
+    assert_eq!(
+        tree.get(1),
+        Some(People {
+            name: "John".to_string(),
+            age: 56
+        })
+    );
+    assert_eq!(
+        tree.get(2),
+        Some(People {
+            name: "Mike".to_string(),
+            age: 57
+        })
+    );
+    assert_eq!(
+        tree.get(3),
+        Some(People {
+            name: "Tommy".to_string(),
+            age: 48
+        })
+    );
 }
 
 #[test]

@@ -4,8 +4,8 @@ use std::collections::HashMap;
 
 use chunkfs::chunkers::{FSChunker, LeapChunker};
 use chunkfs::hashers::SimpleHasher;
-use chunkfs::FileSystem;
 use chunkfs::lsmtree::LsmTree;
+use chunkfs::FileSystem;
 
 const MB: usize = 1024 * 1024;
 

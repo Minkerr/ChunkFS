@@ -1,11 +1,11 @@
-use std::fmt::Formatter;
-use std::io;
-use std::time::{Duration, Instant};
-use serde::{Deserialize, Serialize};
 use crate::map::Database;
 use crate::scrub::{Scrub, ScrubMeasurements};
 use crate::WriteMeasurements;
 use crate::{ChunkHash, Chunker, Hasher};
+use serde::{Deserialize, Serialize};
+use std::fmt::Formatter;
+use std::io;
+use std::time::{Duration, Instant};
 
 /// Container for storage data.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

@@ -1,15 +1,18 @@
+use rand::distributions::Alphanumeric;
+use rand::{thread_rng, Rng};
+use serde::{Deserialize, Serialize};
+use serde_json;
 use std::cmp::Ordering;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
-use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng};
-use serde::{Serialize, Deserialize};
-use serde_json;
 
-#[derive(Debug)]
-#[derive(Clone)]
-pub struct LsmTree<K: Clone, V: Clone> {
+#[derive(Debug, Clone)]
+pub struct LsmTree<K, V>
+where
+    K: Clone,
+    V: Clone,
+{
     root: Node<K, V>,
     stack: Vec<Node<K, V>>,
     size: u32,
@@ -18,9 +21,12 @@ pub struct LsmTree<K: Clone, V: Clone> {
     identifier: String,
 }
 
-#[derive(Debug)]
-#[derive(Clone)]
-enum Node<K, V> where K: Clone, V: Clone {
+#[derive(Debug, Clone)]
+enum Node<K, V>
+where
+    K: Clone,
+    V: Clone,
+{
     Leaf,
     Branch {
         key: K,
@@ -32,8 +38,10 @@ enum Node<K, V> where K: Clone, V: Clone {
     },
 }
 
-
-impl<'b, K: Ord + Clone + Serialize + for<'a> Deserialize<'a>, V: Clone + Serialize + for<'a> Deserialize<'a>> LsmTree<K, V>
+impl<'b, K, V> LsmTree<K, V>
+where
+    K: Ord + Clone + Serialize + for<'a> Deserialize<'a>,
+    V: Clone + Serialize + for<'a> Deserialize<'a>,
 {
     pub fn new(bias: u32) -> Self {
         LsmTree {
@@ -48,7 +56,8 @@ impl<'b, K: Ord + Clone + Serialize + for<'a> Deserialize<'a>, V: Clone + Serial
 
     fn generate_random_string(length: usize) -> String {
         let rng = thread_rng();
-        let random_string: String = rng.sample_iter(&Alphanumeric)
+        let random_string: String = rng
+            .sample_iter(&Alphanumeric)
             .take(length)
             .map(char::from)
             .collect();
@@ -78,7 +87,7 @@ impl<'b, K: Ord + Clone + Serialize + for<'a> Deserialize<'a>, V: Clone + Serial
                     None
                 }
             }
-            Some(value) => { Some(value) }
+            Some(value) => Some(value),
         }
     }
 
@@ -87,8 +96,10 @@ impl<'b, K: Ord + Clone + Serialize + for<'a> Deserialize<'a>, V: Clone + Serial
         let reader = BufReader::new(file.unwrap());
         for line in reader.lines() {
             let line = line.unwrap();
-            let (key, value) = line.split_once(':')
-                .map(|(a, b)| (a.to_string(), b.to_string())).unwrap();
+            let (key, value) = line
+                .split_once(':')
+                .map(|(a, b)| (a.to_string(), b.to_string()))
+                .unwrap();
             if key == serde_json::to_string(&target_key).unwrap() {
                 return Some(serde_json::from_str(&value).unwrap());
             }
@@ -110,8 +121,11 @@ impl<'b, K: Ord + Clone + Serialize + for<'a> Deserialize<'a>, V: Clone + Serial
             let _ = std::fs::create_dir(tree_folder);
         }
 
-        let mut file = File::create(format!("storage/tree{}/sstable{}", self.identifier, self.number_of_unloads))
-            .unwrap();
+        let mut file = File::create(format!(
+            "storage/tree{}/sstable{}",
+            self.identifier, self.number_of_unloads
+        ))
+        .unwrap();
         Node::unload_to_file(&mut self.root, &mut file, self.number_of_unloads);
     }
 
@@ -120,7 +134,11 @@ impl<'b, K: Ord + Clone + Serialize + for<'a> Deserialize<'a>, V: Clone + Serial
     }
 }
 
-impl<K: Ord + Clone + Serialize + for<'a> Deserialize<'a>, V: Clone + Serialize + for<'a> Deserialize<'a>> Node<K, V> {
+impl<K, V> Node<K, V>
+where
+    K: Ord + Clone + Serialize + for<'a> Deserialize<'a>,
+    V: Clone + Serialize + for<'a> Deserialize<'a>,
+{
     fn insert(&mut self, new_key: K, new_value: V, should_climb: &mut bool) -> Node<K, V> {
         match self {
             Node::Leaf => Node::Branch {
@@ -183,9 +201,7 @@ impl<K: Ord + Clone + Serialize + for<'a> Deserialize<'a>, V: Clone + Serialize 
             } => match target_key.cmp(&key) {
                 Ordering::Greater => right.get_balance_factor(target_key),
                 Ordering::Less => left.get_balance_factor(target_key),
-                Ordering::Equal => {
-                    Some(*balance_factor)
-                }
+                Ordering::Equal => Some(*balance_factor),
             },
         }
     }
@@ -223,16 +239,23 @@ impl<K: Ord + Clone + Serialize + for<'a> Deserialize<'a>, V: Clone + Serialize 
                 *left = Box::new(self.clone());
                 left
             }
-            Node::Leaf => unreachable!()
+            Node::Leaf => unreachable!(),
         };
 
         new_left_right_node.set_right_child(left_right_node);
 
         match *right_node {
-            Node::Branch { ref mut left, ref mut balance_factor, .. } => {
+            Node::Branch {
+                ref mut left,
+                ref mut balance_factor,
+                ..
+            } => {
                 let node_balance = match **left {
-                    Node::Branch { ref mut balance_factor, .. } => { balance_factor }
-                    Node::Leaf => unreachable!()
+                    Node::Branch {
+                        ref mut balance_factor,
+                        ..
+                    } => balance_factor,
+                    Node::Leaf => unreachable!(),
                 };
                 if (*balance_factor).clone() != 0 {
                     *node_balance = 0;
@@ -242,7 +265,7 @@ impl<K: Ord + Clone + Serialize + for<'a> Deserialize<'a>, V: Clone + Serialize 
                     *balance_factor = -1;
                 }
             }
-            Node::Leaf => unreachable!()
+            Node::Leaf => unreachable!(),
         }
 
         *right_node
@@ -257,16 +280,25 @@ impl<K: Ord + Clone + Serialize + for<'a> Deserialize<'a>, V: Clone + Serialize 
                 *right = Box::new(self.clone());
                 right
             }
-            Node::Leaf => { unreachable!() }
+            Node::Leaf => {
+                unreachable!()
+            }
         };
 
         new_right_left_node.set_left_child(right_left_node);
 
         match *left_node {
-            Node::Branch { ref mut right, ref mut balance_factor, .. } => {
+            Node::Branch {
+                ref mut right,
+                ref mut balance_factor,
+                ..
+            } => {
                 let node_balance = match **right {
-                    Node::Branch { ref mut balance_factor, .. } => { balance_factor }
-                    Node::Leaf => unreachable!()
+                    Node::Branch {
+                        ref mut balance_factor,
+                        ..
+                    } => balance_factor,
+                    Node::Leaf => unreachable!(),
                 };
                 if (*balance_factor).clone() != 0 {
                     *node_balance = 0;
@@ -276,7 +308,7 @@ impl<K: Ord + Clone + Serialize + for<'a> Deserialize<'a>, V: Clone + Serialize 
                     *balance_factor = 1;
                 }
             }
-            Node::Leaf => unreachable!()
+            Node::Leaf => unreachable!(),
         }
 
         *left_node
@@ -288,14 +320,19 @@ impl<K: Ord + Clone + Serialize + for<'a> Deserialize<'a>, V: Clone + Serialize 
         let left_left_right_node = left_right_node.get_left_child();
         let right_left_right_node = left_right_node.get_right_child();
 
-        let (new_left_left_right_node, new_right_left_right_node)
-            = match *left_right_node {
-            Node::Branch { ref mut left, ref mut right, .. } => {
+        let (new_left_left_right_node, new_right_left_right_node) = match *left_right_node {
+            Node::Branch {
+                ref mut left,
+                ref mut right,
+                ..
+            } => {
                 *left = Box::new(self.clone());
                 *right = Box::new((*right_node).clone());
                 (left, right)
             }
-            Node::Leaf => { unreachable!() }
+            Node::Leaf => {
+                unreachable!()
+            }
         };
 
         new_left_left_right_node.set_right_child(left_left_right_node);
@@ -309,12 +346,18 @@ impl<K: Ord + Clone + Serialize + for<'a> Deserialize<'a>, V: Clone + Serialize 
                 ..
             } => {
                 let node_balance = match **left {
-                    Node::Branch { ref mut balance_factor, .. } => { balance_factor }
-                    Node::Leaf => unreachable!()
+                    Node::Branch {
+                        ref mut balance_factor,
+                        ..
+                    } => balance_factor,
+                    Node::Leaf => unreachable!(),
                 };
                 let right_node_balance = match **right {
-                    Node::Branch { ref mut balance_factor, .. } => { balance_factor }
-                    Node::Leaf => unreachable!()
+                    Node::Branch {
+                        ref mut balance_factor,
+                        ..
+                    } => balance_factor,
+                    Node::Leaf => unreachable!(),
                 };
                 match balance_factor {
                     -1 => {
@@ -333,7 +376,7 @@ impl<K: Ord + Clone + Serialize + for<'a> Deserialize<'a>, V: Clone + Serialize 
                 }
                 *balance_factor = 0;
             }
-            Node::Leaf => unreachable!()
+            Node::Leaf => unreachable!(),
         }
 
         *left_right_node
@@ -345,14 +388,19 @@ impl<K: Ord + Clone + Serialize + for<'a> Deserialize<'a>, V: Clone + Serialize 
         let left_right_left_node = right_left_node.get_left_child();
         let right_right_left_node = right_left_node.get_right_child();
 
-        let (new_left_right_left_node, new_right_right_left_node)
-            = match *right_left_node {
-            Node::Branch { ref mut left, ref mut right, .. } => {
+        let (new_left_right_left_node, new_right_right_left_node) = match *right_left_node {
+            Node::Branch {
+                ref mut left,
+                ref mut right,
+                ..
+            } => {
                 *left = Box::new((*left_node).clone());
                 *right = Box::new(self.clone());
                 (left, right)
             }
-            Node::Leaf => { unreachable!() }
+            Node::Leaf => {
+                unreachable!()
+            }
         };
 
         new_left_right_left_node.set_right_child(left_right_left_node);
@@ -366,12 +414,18 @@ impl<K: Ord + Clone + Serialize + for<'a> Deserialize<'a>, V: Clone + Serialize 
                 ..
             } => {
                 let left_node_balance = match **left {
-                    Node::Branch { ref mut balance_factor, .. } => { balance_factor }
-                    Node::Leaf => unreachable!()
+                    Node::Branch {
+                        ref mut balance_factor,
+                        ..
+                    } => balance_factor,
+                    Node::Leaf => unreachable!(),
                 };
                 let node_balance = match **right {
-                    Node::Branch { ref mut balance_factor, .. } => { balance_factor }
-                    Node::Leaf => unreachable!()
+                    Node::Branch {
+                        ref mut balance_factor,
+                        ..
+                    } => balance_factor,
+                    Node::Leaf => unreachable!(),
                 };
                 match balance_factor {
                     -1 => {
@@ -390,7 +444,7 @@ impl<K: Ord + Clone + Serialize + for<'a> Deserialize<'a>, V: Clone + Serialize 
                 }
                 *balance_factor = 0;
             }
-            Node::Leaf => unreachable!()
+            Node::Leaf => unreachable!(),
         }
 
         *right_left_node
@@ -398,89 +452,100 @@ impl<K: Ord + Clone + Serialize + for<'a> Deserialize<'a>, V: Clone + Serialize 
 
     fn set_right_child(&mut self, node: Box<Node<K, V>>) {
         match self {
-            Node::Branch { ref mut right, .. }
-            => { *right = Box::new(*node) }
-            Node::Leaf => unreachable!()
+            Node::Branch { ref mut right, .. } => *right = Box::new(*node),
+            Node::Leaf => unreachable!(),
         }
     }
 
     fn set_left_child(&mut self, node: Box<Node<K, V>>) {
         match self {
-            Node::Branch { ref mut left, .. }
-            => { *left = Box::new(*node) }
-            Node::Leaf => unreachable!()
+            Node::Branch { ref mut left, .. } => *left = Box::new(*node),
+            Node::Leaf => unreachable!(),
         }
     }
 
     fn get_right_child(&mut self) -> Box<Node<K, V>> {
         match *self {
-            Node::Branch { ref mut right, .. } => {
-                (*right).clone()
-            }
-            Node::Leaf => { Box::new(Node::Leaf) }
+            Node::Branch { ref mut right, .. } => (*right).clone(),
+            Node::Leaf => Box::new(Node::Leaf),
         }
     }
 
     fn get_left_child(&mut self) -> Box<Node<K, V>> {
         match *self {
-            Node::Branch { ref mut left, .. } => {
-                (*left).clone()
-            }
-            Node::Leaf => { Box::new(Node::Leaf) }
+            Node::Branch { ref mut left, .. } => (*left).clone(),
+            Node::Leaf => Box::new(Node::Leaf),
         }
     }
 
     fn balance(&mut self) -> Node<K, V> {
         match *self {
-            Node::Leaf => { self.clone() }
+            Node::Leaf => self.clone(),
             Node::Branch {
                 ref left,
                 ref right,
                 ref balance_factor,
                 ..
-            } => {
-                match *balance_factor {
-                    2 => {
-                        match **right {
-                            Node::Branch { ref balance_factor, .. }
-                            => if *balance_factor >= 0 {
-                                self.rotate_left()
-                            } else {
-                                self.big_rotate_left()
-                            },
-                            _ => unreachable!()
+            } => match *balance_factor {
+                2 => match **right {
+                    Node::Branch {
+                        ref balance_factor, ..
+                    } => {
+                        if *balance_factor >= 0 {
+                            self.rotate_left()
+                        } else {
+                            self.big_rotate_left()
                         }
                     }
-                    -2 => {
-                        match **left {
-                            Node::Branch { ref balance_factor, .. }
-                            => if *balance_factor <= 0 {
-                                self.rotate_right()
-                            } else {
-                                self.big_rotate_right()
-                            },
-                            _ => unreachable!()
+                    _ => unreachable!(),
+                },
+                -2 => match **left {
+                    Node::Branch {
+                        ref balance_factor, ..
+                    } => {
+                        if *balance_factor <= 0 {
+                            self.rotate_right()
+                        } else {
+                            self.big_rotate_right()
                         }
                     }
-                    _ => { self.clone() }
-                }
-            }
+                    _ => unreachable!(),
+                },
+                _ => self.clone(),
+            },
         }
     }
 
     pub fn print(&self, d: i32) {
         match self {
             Node::Leaf => {}
-            Node::Branch { key, value, left, right, balance_factor, .. } => {
+            Node::Branch {
+                key,
+                value,
+                left,
+                right,
+                balance_factor,
+                ..
+            } => {
                 left.print(d.clone() + 1);
                 for _i in 0..d {
                     print!("    ");
                 }
                 match value {
-                    None => { println!("{}:({})", serde_json::to_string(&key).unwrap(), balance_factor) }
+                    None => {
+                        println!(
+                            "{}:({})",
+                            serde_json::to_string(&key).unwrap(),
+                            balance_factor
+                        )
+                    }
                     Some(v) => {
-                        println!("{}:{}({})",
-                                 serde_json::to_string(&key).unwrap(), serde_json::to_string(v).unwrap(), balance_factor)
+                        println!(
+                            "{}:{}({})",
+                            serde_json::to_string(&key).unwrap(),
+                            serde_json::to_string(v).unwrap(),
+                            balance_factor
+                        )
                     }
                 }
                 right.print(d.clone() + 1);
@@ -501,8 +566,14 @@ impl<K: Ord + Clone + Serialize + for<'a> Deserialize<'a>, V: Clone + Serialize 
             } => {
                 left.unload_to_file(file, number_of_unloads);
                 let text = match value {
-                    Some(v) => { format!("{}:{}\n", serde_json::to_string(&key).unwrap(), serde_json::to_string(&v).unwrap()) }
-                    None => format!("{}:\n", serde_json::to_string(&key).unwrap())
+                    Some(v) => {
+                        format!(
+                            "{}:{}\n",
+                            serde_json::to_string(&key).unwrap(),
+                            serde_json::to_string(&v).unwrap()
+                        )
+                    }
+                    None => format!("{}:\n", serde_json::to_string(&key).unwrap()),
                 };
                 if (*value).is_some() {
                     let _ = file.write_all(text.as_bytes());
@@ -520,7 +591,11 @@ pub struct LsmTreeIterator<K: Clone, V: Clone> {
     id: String,
 }
 
-impl<K: Clone, V: Clone> LsmTreeIterator<K, V> {
+impl<K, V> LsmTreeIterator<K, V>
+where
+    K: Clone,
+    V: Clone,
+{
     fn new(root: Node<K, V>, id: String) -> Self {
         let mut stack = Vec::new();
         Self::push_left(&mut stack, root);
@@ -536,22 +611,33 @@ impl<K: Clone, V: Clone> LsmTreeIterator<K, V> {
     }
 }
 
-impl<'a, K: Ord + Clone + Serialize + for<'b> Deserialize<'b>, V: Clone + Serialize + for<'b> Deserialize<'b>> Iterator
-for LsmTreeIterator<K, V> {
+impl<'a, K, V> Iterator for LsmTreeIterator<K, V>
+where
+    K: Ord + Clone + Serialize + for<'b> Deserialize<'b>,
+    V: Clone + Serialize + for<'b> Deserialize<'b>,
+{
     type Item = (K, V);
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(node) = &self.stack.pop() {
-            if let Node::Branch { key, value, right, sstable_number, .. } = node {
+            if let Node::Branch {
+                key,
+                value,
+                right,
+                sstable_number,
+                ..
+            } = node
+            {
                 let new_value = match value.clone() {
                     None => {
                         if *sstable_number != 0 {
-                            LsmTree::get_from_table(key.clone(), *sstable_number, self.id.clone()).unwrap()
+                            LsmTree::get_from_table(key.clone(), *sstable_number, self.id.clone())
+                                .unwrap()
                         } else {
                             unreachable!()
                         }
                     }
-                    Some(value) => { value }
+                    Some(value) => value,
                 };
                 let result = Some(((*key).clone(), new_value));
                 Self::push_left(&mut self.stack, (**right).clone());
@@ -565,9 +651,11 @@ for LsmTreeIterator<K, V> {
     }
 }
 
-
-impl<K: Ord + Clone + Serialize + for<'b> Deserialize<'b>, V: Clone + Serialize + for<'b> Deserialize<'b>>
-IntoIterator for LsmTree<K, V> {
+impl<K, V> IntoIterator for LsmTree<K, V>
+where
+    K: Ord + Clone + Serialize + for<'b> Deserialize<'b>,
+    V: Clone + Serialize + for<'b> Deserialize<'b>,
+{
     type Item = (K, V);
     type IntoIter = LsmTreeIterator<K, V>;
 
@@ -575,4 +663,3 @@ IntoIterator for LsmTree<K, V> {
         LsmTreeIterator::new(self.root.clone(), self.identifier.clone())
     }
 }
-
