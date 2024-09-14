@@ -10,6 +10,7 @@ pub mod chunkers;
 pub mod hashers;
 
 pub mod base;
+pub mod lsmtree;
 mod file_layer;
 mod storage;
 mod system;
