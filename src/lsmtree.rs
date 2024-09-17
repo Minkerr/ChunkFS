@@ -15,9 +15,8 @@ where
     V: Clone,
 {
     root: Node<K, V>,
-    stack: Vec<Node<K, V>>,
     size: u32,
-    number_of_unloads: u8,
+    number_of_unloads: u32,
     unload_bias: u32,
     identifier: String,
 }
@@ -32,7 +31,7 @@ where
     Branch {
         key: K,
         value: Option<V>,
-        sstable_number: u8,
+        sstable_number: u32,
         left: Box<Node<K, V>>,
         right: Box<Node<K, V>>,
         balance_factor: i8,
@@ -47,7 +46,6 @@ where
     pub fn new(bias: u32) -> Self {
         LsmTree {
             root: Node::Leaf,
-            stack: Vec::new(),
             size: 0,
             number_of_unloads: 0,
             unload_bias: bias,
@@ -71,6 +69,8 @@ where
         self.size += 1;
         if self.size % self.unload_bias == 0 {
             self.unload();
+            self.root = Node::Leaf;
+            self.size = 0;
         }
     }
 
@@ -79,20 +79,22 @@ where
     }
 
     pub fn get(&self, target_key: K) -> Option<V> {
-        let (result_value, sstable_number) = Node::get(&self.root, target_key.clone());
+        let (result_value) = Node::get(&self.root, target_key.clone()).0;
         match result_value {
             None => {
-                if sstable_number != 0 {
-                    Self::get_from_table(target_key, sstable_number, self.identifier.clone())
-                } else {
-                    None
+                for i in 1..(self.number_of_unloads + 1) {
+                    let res = Self::get_from_table(target_key.clone(), i, self.identifier.clone());
+                    if res.is_some() {
+                        return res
+                    }
                 }
+                None
             }
             Some(value) => Some(value),
         }
     }
 
-    fn get_from_table(target_key: K, num: u8, id: String) -> Option<V> {
+    fn get_from_table(target_key: K, num: u32, id: String) -> Option<V> {
         let file = File::open(format!("storage/tree{}/sstable{}", id, num));
         let reader = BufReader::new(file.unwrap());
         for line in reader.lines() {
@@ -207,7 +209,7 @@ where
         }
     }
 
-    fn get(&self, target_key: K) -> (Option<V>, u8) {
+    fn get(&self, target_key: K) -> (Option<V>, u32) {
         match self {
             Node::Leaf => (None, 0),
             Node::Branch {
@@ -554,7 +556,7 @@ where
         }
     }
 
-    pub fn unload_to_file(&mut self, file: &mut File, number_of_unloads: u8) {
+    pub fn unload_to_file(&mut self, file: &mut File, number_of_unloads: u32) {
         match self {
             Node::Leaf => {}
             Node::Branch {

@@ -1,7 +1,7 @@
 use std::ops::{Add, AddAssign};
 use std::time::Duration;
 use std::{hash, io};
-
+use serde::{Deserialize, Serialize};
 pub use system::{FileOpener, FileSystem, OpenError};
 
 #[cfg(feature = "chunkers")]
@@ -15,9 +15,9 @@ mod file_layer;
 mod storage;
 mod system;
 
-pub trait ChunkHash: hash::Hash + Clone + Eq + PartialEq + Default {}
+pub trait ChunkHash: hash::Hash + Clone + Eq + PartialEq + Default + Serialize + for<'a> Deserialize<'a> + Ord {}
 
-impl<T: hash::Hash + Clone + Eq + PartialEq + Default> ChunkHash for T {}
+impl<T: hash::Hash + Clone + Eq + PartialEq + Default + Serialize + for<'a> Deserialize<'a> + Ord> ChunkHash for T {}
 
 /// Block size, used by [`read`][crate::FileSystem::read_from_file]
 /// and [`write`][crate::FileSystem::write_to_file] methods in the [`FileSystem`].

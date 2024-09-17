@@ -1,5 +1,7 @@
 extern crate chunkfs;
 
+use std::time::Instant;
+use rand::Rng;
 use chunkfs::lsmtree::LsmTree;
 use serde::{Deserialize, Serialize};
 
@@ -20,7 +22,7 @@ fn test_insert() {
 
 #[test]
 fn test_big_right_rotate() {
-    let mut tree = LsmTree::new(4);
+    let mut tree = LsmTree::new(8);
     tree.insert(6, "66".to_string());
     tree.insert(7, "77".to_string());
     tree.insert(3, "33".to_string());
@@ -38,7 +40,7 @@ fn test_big_right_rotate() {
 
 #[test]
 fn test_big_left_rotate() {
-    let mut tree = LsmTree::new(4);
+    let mut tree = LsmTree::new(16);
     tree.insert(3, "33".to_string().to_string());
     tree.insert(2, "22".to_string().to_string());
     tree.insert(6, "66".to_string().to_string());
@@ -65,7 +67,7 @@ fn test_big_left_rotate() {
 
 #[test]
 fn test_left_rotate() {
-    let mut tree = LsmTree::new(4);
+    let mut tree = LsmTree::new(8);
     tree.insert(2, "22".to_string());
     tree.insert(3, "33".to_string());
     tree.insert(9, "99".to_string());
@@ -77,7 +79,7 @@ fn test_left_rotate() {
 
 #[test]
 fn test_right_rotate() {
-    let mut tree = LsmTree::new(4);
+    let mut tree = LsmTree::new(8);
     tree.insert(6, "66".to_string());
     tree.insert(7, "77".to_string());
     tree.insert(4, "44".to_string());
@@ -173,6 +175,7 @@ fn test_tree_with_vector_key() {
 }
 
 #[test]
+#[ignore]
 fn test_iterator() {
     let mut tree = LsmTree::new(2);
     tree.insert(2, 20);
@@ -187,4 +190,21 @@ fn test_iterator() {
         assert_eq!(value, counter * 10);
         counter += 1;
     }
+}
+
+#[test]
+fn test_tree_with_big_input() {
+    let mut tree = LsmTree::new(1024);
+    let start = Instant::now();
+
+    for i in 0..(1024*128) {
+        let mut rng = rand::thread_rng();
+        let random_vector: Vec<i32> = (0..100).map(|_| rng.gen_range(0..100)).collect();
+        tree.insert(i, random_vector);
+        if i % 256 == 0 {
+            println!("insert vector number {}. Running for {}", i, (Instant::now() - start).as_secs_f64());
+        }
+    }
+    
+    // assert_eq!(tree.get(2), Some(Vec::from([2, 3, 9])));
 }

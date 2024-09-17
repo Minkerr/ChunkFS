@@ -3,7 +3,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io;
 use std::io::ErrorKind;
-
+use serde::{Deserialize, Serialize};
 use crate::file_layer::{FileHandle, FileLayer};
 use crate::storage::Storage;
 use crate::WriteMeasurements;

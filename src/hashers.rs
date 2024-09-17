@@ -20,10 +20,10 @@ pub struct Sha256Hasher {
 }
 
 impl Hasher for Sha256Hasher {
-    type Hash = Output<Sha256>;
+    type Hash = Vec<u8>;
 
     fn hash(&mut self, data: &[u8]) -> Self::Hash {
         Digest::update(&mut self.hasher, data);
-        Digest::finalize_reset(&mut self.hasher)
+        Digest::finalize_reset(&mut self.hasher).to_vec()
     }
 }
