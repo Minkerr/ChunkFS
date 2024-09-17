@@ -27,7 +27,3 @@ hashers = ["sha2"]
 chunkfs = { path = ".", features = ["chunkers", "hashers"] }
 criterion = "0.5"
 
-[[bench]]
-name = "write_read"
-harness = false
-
